@@ -29,11 +29,14 @@ def main(argv):
     img_url_list = get_img_urls(url)
 
     try: 
-        if options.a:
-            print("downloading images")
+        if not options.g and not options.j and not options.p:
             dl_all(img_url_list,savepath)
 
         else:
+            if options.g:
+                print("downloading GIFs")
+                dl_gif(img_url_list,savepath)
+
             if options.j:
                 print("downloading JPEGs")
                 dl_jpg(img_url_list,savepath)
@@ -70,22 +73,24 @@ def get_img_urls(url):
 # Download image from url leading to image file and save them in given path 
 # (if savepath=None: Save in current working directory)
 
+def dl_all(img_urls,savepath):
+    for url in img_urls:
+        dl_raw(url,savepath)
+
 def dl_jpg(img_urls,savepath):
     for url in img_urls:
         if url.find(".jpg") != -1:
             dl_raw(url,savepath)
 
-
-
 def dl_png(img_urls,savepath):
     for url in img_urls:
-        if url.find(".gif") != -1:
+        if url.find(".png") != -1:
             dl_raw(url,savepath)
-
 
 def dl_gif(img_urls,savepath):
     for url in img_urls:
-        dl_raw(url,savepath)
+        if url.find(".gif") != -1:
+            dl_raw(url,savepath)
 
 def dl_raw(img_url,savepath):
     resp = requests.get(img_url,stream=True)
