@@ -17,7 +17,7 @@ def main(argv):
 
     parser = optparse.OptionParser()
     parser.add_option('-o',action="store") # -o : Output Directory
-    parser.add_option('-a',action="store_true",dest="a") # -a : Get all types of Images
+    parser.add_option('-g',action="store_true",dest="a") # -a : Get all gif Images
     parser.add_option('-j',action="store_true",dest="j") # -j : Get all jpeg Images
     parser.add_option('-p',action="store_true",dest="p") # -p : Get all png Images
 
@@ -79,11 +79,11 @@ def dl_jpg(img_urls,savepath):
 
 def dl_png(img_urls,savepath):
     for url in img_urls:
-        if url.find(".png") != -1:
+        if url.find(".gif") != -1:
             dl_raw(url,savepath)
 
 
-def dl_all(img_urls,savepath):
+def dl_gif(img_urls,savepath):
     for url in img_urls:
         dl_raw(url,savepath)
 
