@@ -1,4 +1,4 @@
-import io
+from io import BytesIO
 from os import access
 import sys
 import optparse
@@ -10,43 +10,61 @@ from tqdm import tqdm
 from bs4 import BeautifulSoup as bs
 
 
+def init_optparser(parser,filetypegroup,sizelimitgroup):
+
+    parser.add_option('-o',action="store") # -o : Output Directory
+
+    filetypegroup.add_option('-g',"--gif",help="Only load .gif Images",action="append_const",const=".gif",dest="chosen_types")   # -a : Get all gif Images
+    filetypegroup.add_option('-j',"--jpeg",help="Only load .jpeg Images",action="append_const",const=".jpg",dest="chosen_types") # -j : Get all jpeg Images
+    filetypegroup.add_option('-p',"--png",help="Only load .png Images",action="append_const",const=".png",dest="chosen_types")   # -p : Get all png Images
+
+    sizelimitgroup.add_option("--min-size",metavar="WIDTH HEIGHT",
+            help="All images sized above the chosen WIDTH and HEIGHT in Pixels, can be combined with --max-size",
+            type=int,nargs=2,dest="min_s",default=None)
+    sizelimitgroup.add_option("--max-size",metavar="WIDTH HEIGHT",
+            help="All images sized below the chosen WIDTH and HEIGHT in Pixels, can be combined with --min-size",
+            type=int,nargs=2,dest="max_s",default=None)
+
 def main(argv):
 
     url = argv[1]
-    savepath = None
-
     parser = optparse.OptionParser()
-    parser.add_option('-o',action="store") # -o : Output Directory
-    parser.add_option('-g',action="store_true",dest="a") # -a : Get all gif Images
-    parser.add_option('-j',action="store_true",dest="j") # -j : Get all jpeg Images
-    parser.add_option('-p',action="store_true",dest="p") # -p : Get all png Images
+    filetypes = parser.add_option_group("filetypes")
+    sizelimits = parser.add_option_group("sizelimits")
+    init_optparser(parser,filetypes,sizelimits)
 
-    options, remainder = parser.parse_args()
-
-    savepath = options.o
-
+    args, remainder = parser.parse_args()
     print("getting images from: " + url)
+    compat_types = [".jpg",".png",".gif"]
+
+    if not args.chosen_types:
+        chosen_types = compat_types
+    else: 
+        chosen_types = args.chosen_types
+    savepath = args.o
+
+    #print("getting images from: " + url)
     img_url_list = get_img_urls(url)
+    img_url_list = filter_compat_urls(img_url_list,chosen_types)
 
-    try: 
-        if not options.g and not options.j and not options.p:
-            dl_all(img_url_list,savepath)
+    for url in img_url_list:
+        try:
+            img = get_img(url)
 
-        else:
-            if options.g:
-                print("downloading GIFs")
-                dl_gif(img_url_list,savepath)
+            if args.min_s and args.max_s:
+                if filter_min_size(img,args.min_s) and filter_max_size(img,args.max_s):
+                    save_img(img, url.rsplit('/', 1)[1],savepath)
+            elif args.min_s:
+                if filter_min_size(img,args.min_s):
+                    save_img(img, url.rsplit('/', 1)[1],savepath)
+            elif (args.max_s != None):
+                if filter_max_size(img,args.max_s):
+                    save_img(img, url.rsplit('/', 1)[1],savepath)
+            else:
+                save_img(img, url.rsplit('/', 1)[1],savepath)
 
-            if options.j:
-                print("downloading JPEGs")
-                dl_jpg(img_url_list,savepath)
-
-            if options.p:
-                print("downloading PNGs")
-                dl_png(img_url_list,savepath)
-
-    except Exception as e:
-        print(e)
+        except Exception as e:
+            print(e)
 
 
 # Extract all absolute image-source-urls from the html code of given webpage url,
@@ -66,45 +84,54 @@ def get_img_urls(url):
         #print("URL: {}".format(img_url))
 
     print("Found {} Images".format(len(img_urls)))
-
     return img_urls
 
+def get_img(img_url):
+    resp = requests.get(img_url)
+    return Image.open(BytesIO(resp.content))
 
-# Download image from url leading to image file and save them in given path 
+
+# Save image in given path 
 # (if savepath=None: Save in current working directory)
-
-def dl_all(img_urls,savepath):
-    for url in img_urls:
-        dl_raw(url,savepath)
-
-def dl_jpg(img_urls,savepath):
-    for url in img_urls:
-        if url.find(".jpg") != -1:
-            dl_raw(url,savepath)
-
-def dl_png(img_urls,savepath):
-    for url in img_urls:
-        if url.find(".png") != -1:
-            dl_raw(url,savepath)
-
-def dl_gif(img_urls,savepath):
-    for url in img_urls:
-        if url.find(".gif") != -1:
-            dl_raw(url,savepath)
-
-def dl_raw(img_url,savepath):
-    resp = requests.get(img_url,stream=True)
-
+def save_img(img,fname,savepath):
     if savepath == None:
-        if img_url.find('/'):
-            with open(img_url.rsplit('/', 1)[1],"wb") as f:
-                f.write(resp.content)
+        img.save(fname)
+        print("Saving: {}".format(fname))
         return
 
-    fpath = savepath+img_url.rsplit('/', 1)[1]
-    with open(fpath,"wb") as f:
-        print("Writing to: {}".format(savepath+img_url.rsplit('/', 1)[1],"wb") )
-        f.write(resp.content)
+    fpath = savepath+fname
+    img.save(fname)
+    print("Saving to: {}".format(fpath))
+       
+
+# Functions to filter a list of given Image-URLs for compatible formats
+def check_compat(url,compat_types):
+    for type in compat_types:
+        if url.find(type) != -1:
+            return True
+    return False
+
+def filter_compat_urls(url_list,compat_types):
+    filtered_list = []
+    for url in url_list:
+        if check_compat(url,compat_types):
+            filtered_list.append(url)
+    return filtered_list
+
+
+# Filter images by size
+def filter_min_size(img,size_limit):
+    width, height = img.size
+    if width > size_limit[0] and height > size_limit[1]:
+        return True
+    return False 
+
+def filter_max_size(img,size_limit):
+    width, height = img.size
+    if width < size_limit[0] and height < size_limit[1]:
+        return True
+    return False 
+
 
 if __name__ == "__main__":
     main(sys.argv)
