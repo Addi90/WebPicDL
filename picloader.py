@@ -28,7 +28,12 @@ def main(argv):
         chosen_types = args.chosen_types
     savepath = args.o
 
-    img_url_list = get_img_urls(url)
+    
+    if args.G:
+        img_url_list = get_gallery_img_urls(url)
+    else:
+        img_url_list = get_img_urls(url)
+
     img_url_list = filter_compat_urls(img_url_list,chosen_types)
     count = 0
     for url in img_url_list:
@@ -62,6 +67,12 @@ def init_optparser(parser,filetypegroup,sizelimitgroup):
         help="Set Output Directory for downloaded Images."
         "If not set, Output Directory will be current Directory",
         action="store"
+        )
+
+    parser.add_option('-G',
+        "--Gallery",help="tries to download the source images in a gallery of thumbnails",
+        action="store_true",
+        dest="G"
         )
 
     # Filter for Filetypes
@@ -123,6 +134,36 @@ def get_img_urls(url):
         img_url = urllib.parse.urljoin(url, img_url)
         img_urls.append(img_url)
         #print("URL: {}".format(img_url))
+
+    print("Found {} Images".format(len(img_urls)))
+    return img_urls
+
+def get_gallery_img_urls(url):
+    data = bs(requests.get(url).content, "html.parser")
+    
+    img_urls = []
+
+    for a_bracket in tqdm(data.find_all("a"),"Extracting all gallery IMG Urls"):
+        classname = a_bracket.attrs.get("class")
+
+        if classname is None:
+            continue
+        if any("gallery" in names for names in classname):
+            #print("Class Name: {}".format(classname))
+
+            img_link = a_bracket.attrs.get("href")
+            img_link = urllib.parse.urljoin(url, img_link)
+            #print("Link URL: {}".format(img_link))
+            img_urls.append(img_link)
+            img_link_data = bs(requests.get(img_link).content, "html.parser")
+
+            for img_tag in img_link_data.find_all("img"):
+                img_url = img_tag.attrs.get("src")
+                if not img_url:
+                    continue
+                img_url = urllib.parse.urljoin(img_link, img_url)
+                img_urls.append(img_url)
+                #print("URL: {}".format(img_url))
 
     print("Found {} Images".format(len(img_urls)))
     return img_urls
