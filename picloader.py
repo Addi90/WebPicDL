@@ -1,18 +1,23 @@
 from io import BytesIO
-from os import access
+from os import access,path
 import sys
 import optparse
 import urllib
 import requests
+import re
 
 from PIL import Image
 from tqdm import tqdm
 from bs4 import BeautifulSoup as bs
+from requests_html import HTMLSession
 
 
 def main(argv):
-
-    url = argv[1]
+    try: 
+        url = argv[1]
+    except IndexError as e:
+        print(f"{e}: no target URL entered - exiting...")
+        return
     parser = optparse.OptionParser()
     filetypes = parser.add_option_group("filetypes")
     sizelimits = parser.add_option_group("sizelimits")
@@ -28,13 +33,12 @@ def main(argv):
         chosen_types = args.chosen_types
     savepath = args.o
 
-    
+    url_list = get_img_urls(url)
     if args.G:
-        img_url_list = get_gallery_img_urls(url)
-    else:
-        img_url_list = get_img_urls(url)
+        gallery_url_list = get_gallery_img_urls(url)
+        url_list.extend(gallery_url_list)
 
-    img_url_list = filter_compat_urls(img_url_list,chosen_types)
+    img_url_list = filter_compat_urls(url_list,chosen_types)
     count = 0
     for url in img_url_list:
         try:
@@ -122,84 +126,100 @@ def init_optparser(parser,filetypegroup,sizelimitgroup):
 # Extract all absolute image-source-urls from the html code of given webpage url,
 # returns list of image-source-urls
 
-def get_img_urls(url):
-    data = bs(requests.get(url).content, "html.parser")
-    
-    img_urls = []
+def get_gallery_img_urls(url : str):
+    gallery_links = get_gallery_source_urls(url)
+    gallery_img_links = []
 
-    for img in tqdm(data.find_all("img"),"Extracting all IMG Urls"):
-        img_url = img.attrs.get("src")
-        if not img_url:
-            continue
-        img_url = urllib.parse.urljoin(url, img_url)
-        img_urls.append(img_url)
-        #print("URL: {}".format(img_url))
+    for glink in gallery_links:
+        page_html = get_html(glink)
 
-    print("Found {} Images".format(len(img_urls)))
-    return img_urls
+        for img_link in re.findall(r'\b(?:http:\/|https:\/)?\/[^"\'<>(){}]*\.(?:jpg|jpeg|gif|png)',page_html.html):
+            print(f"{img_link}")
+            gallery_img_links.append(img_link)
 
-def get_gallery_img_urls(url):
-    data = bs(requests.get(url).content, "html.parser")
-    
-    img_urls = []
+    print(f"Gallery Image Links: {gallery_img_links}")
 
-    for a_bracket in tqdm(data.find_all("a"),"Extracting all gallery IMG Urls"):
-        classname = a_bracket.attrs.get("class")
+    return gallery_img_links
 
-        if classname is None:
-            continue
-        if any("gallery" in names for names in classname):
-            #print("Class Name: {}".format(classname))
 
-            img_link = a_bracket.attrs.get("href")
-            img_link = urllib.parse.urljoin(url, img_link)
-            #print("Link URL: {}".format(img_link))
-            img_urls.append(img_link)
-            img_link_data = bs(requests.get(img_link).content, "html.parser")
+def get_gallery_source_urls(url : str):
+    page_html = get_html(url)
+    elements = page_html.find('a')
+    source_links = []
+    for e in elements:
+        if re.findall(r'<.*[\"\'](?:gallery.*|thumb.*)[\"\']\s?[>]',e.html):
+            link = str(e.absolute_links)
+            link = link[2:-2]
+            source_links.append(link)
+    print(f"Gallery Source Links: {source_links}")
 
-            for img_tag in img_link_data.find_all("img"):
-                img_url = img_tag.attrs.get("src")
-                if not img_url:
-                    continue
-                img_url = urllib.parse.urljoin(img_link, img_url)
-                img_urls.append(img_url)
-                #print("URL: {}".format(img_url))
+    return source_links
 
-    print("Found {} Images".format(len(img_urls)))
-    return img_urls
+
+def get_img_urls(url : str):
+    page_html = get_html(url)
+    links = []
+
+    for link in tqdm(re.findall(r'\b(?:http:\/|https:\/)?\/[^"\'<>(){}]*\.(?:jpg|jpeg|gif|png)',page_html.html),"Extracting all links"):
+        link = urllib.parse.urljoin(url, link)
+        links.append(link)
+
+    links = remove_dupl_urls(links)
+    print(f"Found {len(links)} Links")
+    print(f"Links: {links}")
+
+    return links
+
 
 def get_img(img_url):
     resp = requests.get(img_url)
+
     return Image.open(BytesIO(resp.content))
 
+
+# Helper functions
+
+def remove_dupl_urls(url_list : list):
+    return list(dict.fromkeys(url_list))
+
+
+def get_html(url : str):
+
+    session = HTMLSession()
+    resp = session.get(url)
+        
+    resp.html.render()
+    return resp.html
 
 # Saves image to given path 
 # (if savepath=None: Save in current working directory)
 
-def save_img(img,fname,savepath):
+def save_img(img,fname : str,savepath : str):
     if savepath == None:
         img.save(fname)
         print("Saving: {}".format(fname))
         return
 
-    fpath = savepath+fname
+    fpath = savepath+fname 
     img.save(fname)
     print("Saving {} to: {}".format(fname,fpath))
        
 
 # Functions to filter a list of given Image-URLs for compatible formats
 
-def check_compat(url,compat_types):
+def check_compat(url : str,compat_types : list):
     for type in compat_types:
         if url.find(type) != -1:
             return True
     return False
 
-def filter_compat_urls(url_list,compat_types):
+
+def filter_compat_urls(url_list : list,compat_types : list):
     filtered_list = []
     for url in url_list:
         if check_compat(url,compat_types):
             filtered_list.append(url)
+    print(f"Found {len(filtered_list)} compatible Image URLs")
     return filtered_list
 
 
@@ -210,6 +230,7 @@ def filter_min_size(img,size_limit):
     if width > size_limit[0] and height > size_limit[1]:
         return True
     return False 
+
 
 def filter_max_size(img,size_limit):
     width, height = img.size

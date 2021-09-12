@@ -6,7 +6,8 @@ Open the command line and call picloader.py with the first argument being the ta
 
 Attribute|Description
 :---:|:---
--o *PATH*|Save images to specified path (optional)
+-o *PATH*|Save images to specified path instead working directory (optional)
+-G|Attempts to get the source image from image galleries
 -p|filter for *.png (optional)
 -j|filter for *.jpg (optional)
 -g|filter for *.gif (optional)
