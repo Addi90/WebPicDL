@@ -133,11 +133,16 @@ def get_gallery_img_urls(url : str):
     for glink in gallery_links:
         page_html = get_html(glink)
 
-        for img_link in re.findall(r'\b(?:http:\/|https:\/)?\/[^"\'<>(){}]*\.(?:jpg|jpeg|gif|png)',page_html.html):
-            print(f"{img_link}")
+        for img_link in tqdm(
+            re.findall(r'(?:http:\/|https:\/)?\/[^\"\']*\.(?:jpg|jpeg|gif|png)',page_html.html),
+            "Extracting gallery source imagelinks"
+            ):
+
+            if img_link.find("html") == -1:
+                img_link = urllib.parse.urljoin(glink,img_link)
             gallery_img_links.append(img_link)
 
-    print(f"Gallery Image Links: {gallery_img_links}")
+    print(f"Found {len(gallery_img_links)} Links from Gallery")
 
     return gallery_img_links
 
@@ -151,7 +156,7 @@ def get_gallery_source_urls(url : str):
             link = str(e.absolute_links)
             link = link[2:-2]
             source_links.append(link)
-    print(f"Gallery Source Links: {source_links}")
+    #print(f"Gallery Source Links: {source_links}")
 
     return source_links
 
@@ -160,13 +165,16 @@ def get_img_urls(url : str):
     page_html = get_html(url)
     links = []
 
-    for link in tqdm(re.findall(r'\b(?:http:\/|https:\/)?\/[^"\'<>(){}]*\.(?:jpg|jpeg|gif|png)',page_html.html),"Extracting all links"):
+    for link in tqdm(
+        re.findall(r'(?:http:\/|https:\/)?\/[^\"\']*\.(?:jpg|jpeg|gif|png)',page_html.html),
+        "Extracting all imagelinks"
+        ):
+
         link = urllib.parse.urljoin(url, link)
         links.append(link)
 
     links = remove_dupl_urls(links)
     print(f"Found {len(links)} Links")
-    print(f"Links: {links}")
 
     return links
 
