@@ -1,10 +1,11 @@
 from io import BytesIO
-from os import access,path
+from os import access,path,mkdir,sep
 import sys
 import optparse
 import urllib
 import requests
 import re
+
 
 from PIL import Image
 from tqdm import tqdm
@@ -14,17 +15,19 @@ from requests_html import HTMLSession
 
 def main(argv):
     try: 
-        url = argv[1]
+        target_urls = get_targets(argv[1])
     except IndexError as e:
         print(f"{e}: no target URL entered - exiting...")
         return
+
+    
+
     parser = optparse.OptionParser()
     filetypes = parser.add_option_group("filetypes")
     sizelimits = parser.add_option_group("sizelimits")
     init_optparser(parser,filetypes,sizelimits)
 
     args, remainder = parser.parse_args()
-    print("getting images from: " + url)
     compat_types = [".jpg",".png",".gif"]
 
     if not args.chosen_types:
@@ -33,33 +36,40 @@ def main(argv):
         chosen_types = args.chosen_types
     savepath = args.o
 
-    url_list = get_img_urls(url)
-    if args.G:
-        gallery_url_list = get_gallery_img_urls(url)
-        url_list.extend(gallery_url_list)
-
-    img_url_list = filter_compat_urls(url_list,chosen_types)
     count = 0
-    for url in img_url_list:
-        try:
-            img = get_img(url)
 
-            if args.min_s and args.max_s:    
-                if filter_min_size(img,args.min_s) and filter_max_size(img,args.max_s):
+    for url in target_urls:
+        img_urls = get_img_urls(url)
+        if args.G:
+            gallery_url_list = get_gallery_img_urls(url)
+            img_urls.extend(gallery_url_list)
+
+        filtered_img_urls = filter_compat_urls(img_urls,chosen_types)
+
+        for url in tqdm(filtered_img_urls,"saving images..."):
+            try:
+                img = get_img(url)
+
+                if len(target_urls) > 1:
+                    mkdir(f"{count+1}")
+                    savepath = sep.join(savepath,str(count+1))
+
+                if args.min_s and args.max_s:    
+                    if filter_min_size(img,args.min_s) and filter_max_size(img,args.max_s):
+                        save_img(img, url.rsplit('/', 1)[1],savepath)
+                elif args.min_s:
+                    if filter_min_size(img,args.min_s):
+                        save_img(img, url.rsplit('/', 1)[1],savepath)
+                elif (args.max_s != None):
+                    if filter_max_size(img,args.max_s):
+                        save_img(img, url.rsplit('/', 1)[1],savepath)
+                else:
                     save_img(img, url.rsplit('/', 1)[1],savepath)
-            elif args.min_s:
-                if filter_min_size(img,args.min_s):
-                    save_img(img, url.rsplit('/', 1)[1],savepath)
-            elif (args.max_s != None):
-                if filter_max_size(img,args.max_s):
-                    save_img(img, url.rsplit('/', 1)[1],savepath)
-            else:
-                save_img(img, url.rsplit('/', 1)[1],savepath)
-            count += 1
-        except Exception as e:
-            print(e)
+                count += 1
+            except Exception as e:
+                print(e)
     
-    print("finished downloading {} images!".format(count))
+    print(f"finished downloading {count} images!")
 
 
 # Initializes all possible command-line options
@@ -73,6 +83,15 @@ def init_optparser(parser,filetypegroup,sizelimitgroup):
         action="store"
         )
 
+    # Set a File Name or part of a name to search for
+    parser.add_option('-n',
+        "--name",help="Search for images with a specific name, * for "
+        "wildcard (e.g. \"image*\" for files like image123.jpg)",
+        action="store",
+        dest="n"
+        )
+
+    # Search for the source images of a image gallery
     parser.add_option('-G',
         "--Gallery",help="tries to download the source images in a gallery of thumbnails",
         action="store_true",
@@ -122,27 +141,20 @@ def init_optparser(parser,filetypegroup,sizelimitgroup):
         default=None
         )
 
-
 # Extract all absolute image-source-urls from the html code of given webpage url,
 # returns list of image-source-urls
 
-def get_gallery_img_urls(url : str):
+def get_gallery_img_urls(url : str, searchword : str = None):
     gallery_links = get_gallery_source_urls(url)
     gallery_img_links = []
 
-    for glink in gallery_links:
-        page_html = get_html(glink)
+    print(f"searching {len(gallery_links)} gallery source links")
 
-        for img_link in tqdm(
-            re.findall(r'(?:http:\/|https:\/)?\/[^\"\']*\.(?:jpg|jpeg|gif|png)',page_html.html),
-            "Extracting gallery source imagelinks"
-            ):
-
-            if img_link.find("html") == -1:
-                img_link = urllib.parse.urljoin(glink,img_link)
-            gallery_img_links.append(img_link)
-
-    print(f"Found {len(gallery_img_links)} Links from Gallery")
+    for glink in tqdm(gallery_links, "extracting source image links from gallery"):
+        img_links = get_img_urls(glink,searchword)
+        gallery_img_links.extend(img_links)
+        
+    print(f"found {len(gallery_img_links)} links from gallery")
 
     return gallery_img_links
 
@@ -161,20 +173,20 @@ def get_gallery_source_urls(url : str):
     return source_links
 
 
-def get_img_urls(url : str):
+def get_img_urls(url : str, searchword : str = None ):
     page_html = get_html(url)
     links = []
 
-    for link in tqdm(
-        re.findall(r'(?:http:\/|https:\/)?\/[^\"\']*\.(?:jpg|jpeg|gif|png)',page_html.html),
-        "Extracting all imagelinks"
-        ):
+    if(searchword == None):
+        searchword = "*"
+
+    for link in re.findall(rf'(?:http:\/|https:\/)?\/[^\"\']*\/{searchword}\.(?:jpg|jpeg|gif|png)',
+        page_html.html):
 
         link = urllib.parse.urljoin(url, link)
         links.append(link)
 
     links = remove_dupl_urls(links)
-    print(f"Found {len(links)} Links")
 
     return links
 
@@ -192,25 +204,51 @@ def remove_dupl_urls(url_list : list):
 
 
 def get_html(url : str):
-
     session = HTMLSession()
     resp = session.get(url)
         
     resp.html.render()
     return resp.html
 
+
+def read_targets_file(path : str):
+    url_list = []
+    try:
+        file = open(path,"r")
+    except FileNotFoundError as e:
+        print(f"{e}")
+        return None
+
+    print(f"opened {path}")
+    for line in file:
+        url_list.append(line)
+
+    file.close()
+    print(f"found {len(url_list)} target URLs in file")
+    return url_list
+
+
+def get_targets(input : str):
+    targets = []
+    if re.findall(r'^(https:|http:|www\.)\S*',input) != None:
+        targets.append(input)
+        return targets
+    else:
+        return targets.extend(read_targets_file(input))
+
+
 # Saves image to given path 
 # (if savepath=None: Save in current working directory)
 
-def save_img(img,fname : str,savepath : str):
+def save_img(img,fname : str,savepath : str = None):
     if savepath == None:
         img.save(fname)
-        print("Saving: {}".format(fname))
+        #print("Saving: {}".format(fname))
         return
 
     fpath = savepath+fname 
     img.save(fname)
-    print("Saving {} to: {}".format(fname,fpath))
+    #print("Saving {} to: {}".format(fname,fpath))
        
 
 # Functions to filter a list of given Image-URLs for compatible formats

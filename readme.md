@@ -7,6 +7,7 @@ Open the command line and call picloader.py with the first argument being the ta
 Attribute|Description
 :---:|:---
 -o *PATH*|Save images to specified path instead working directory (optional)
+-n *NAME*|Search for images with a specific name, * for wildcard (e.g. \"image*\" for files like image123.jpg), other Regex are possible (optional)
 -G|Attempts to get the source image from image galleries
 -p|filter for *.png (optional)
 -j|filter for *.jpg (optional)
