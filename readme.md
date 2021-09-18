@@ -2,7 +2,7 @@
 A simple command line tool for downloading all supported image types from a webpage, written in python. It can filter for types and sizes.
 
 ## How to Use ##
-Open the command line and call picloader.py with the first argument being the target URL. 
+Open the command line and call picloader.py with the first argument being the target URL or a text file having target URLs. The URLs in the file must be each in a new line. Commas and other separators not needed, just each in their own line. 
 
 Attribute|Description
 :---:|:---
@@ -21,5 +21,9 @@ Image Type Filters can be combined (Ex.: -jg for jpgs and gifs), size filters --
 Example downloading only jpegs of minimum 200x200 Pixels to specified directory:
 ```
     picloader.py http://www.exampleurl... -j -o C:/Exampledir/ --min-size 200 200
+```
+Example downloading gallery images from URLs in a text file of minimum 1000x1000 pixels with a name starting with "img"
+```
+    picloader.py  source.txt -n img* -G --min-size 1000 1000
 ```
 

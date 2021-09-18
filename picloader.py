@@ -20,8 +20,6 @@ def main(argv):
         print(f"{e}: no target URL entered - exiting...")
         return
 
-    
-
     parser = optparse.OptionParser()
     filetypes = parser.add_option_group("filetypes")
     sizelimits = parser.add_option_group("sizelimits")
@@ -34,25 +32,37 @@ def main(argv):
         chosen_types = compat_types
     else: 
         chosen_types = args.chosen_types
-    savepath = args.o
+    output_dir = args.o
 
     count = 0
 
     for url in target_urls:
-        img_urls = get_img_urls(url)
+        img_urls = []
+        print(f"searching in {url}")
         if args.G:
             gallery_url_list = get_gallery_img_urls(url)
             img_urls.extend(gallery_url_list)
+        else:
+            img_urls.extend(get_img_urls(url))
 
         filtered_img_urls = filter_compat_urls(img_urls,chosen_types)
+        
+        if output_dir == None:
+            i = 1
+            while (path.isdir( sep.join(str(count+i)) + sep)):  
+                i += 1
+            mkdir(f"{count+i}")
+            savepath = sep.join(str(count+i)) + sep
+        else:
+            i = 1
+            while (path.isdir(output_dir + sep.join(str(count+i)) + sep)):  
+                i += 1
+            mkdir(f"{count+i}")
+            savepath = output_dir + sep.join(str(count+i)) + sep
 
-        for url in tqdm(filtered_img_urls,"saving images..."):
+        for url in tqdm(filtered_img_urls,f"saving images from {url} to ..{sep+savepath}"):
             try:
                 img = get_img(url)
-
-                if len(target_urls) > 1:
-                    mkdir(f"{count+1}")
-                    savepath = sep.join(savepath,str(count+1))
 
                 if args.min_s and args.max_s:    
                     if filter_min_size(img,args.min_s) and filter_max_size(img,args.max_s):
@@ -65,11 +75,12 @@ def main(argv):
                         save_img(img, url.rsplit('/', 1)[1],savepath)
                 else:
                     save_img(img, url.rsplit('/', 1)[1],savepath)
-                count += 1
+                
             except Exception as e:
                 print(e)
-    
-    print(f"finished downloading {count} images!")
+
+        count += 1
+    print(f"finished downloading images!")
 
 
 # Initializes all possible command-line options
@@ -154,7 +165,7 @@ def get_gallery_img_urls(url : str, searchword : str = None):
         img_links = get_img_urls(glink,searchword)
         gallery_img_links.extend(img_links)
         
-    print(f"found {len(gallery_img_links)} links from gallery")
+    print(f"found {len(gallery_img_links)} image links from gallery")
 
     return gallery_img_links
 
@@ -220,21 +231,22 @@ def read_targets_file(path : str):
         return None
 
     print(f"opened {path}")
-    for line in file:
-        url_list.append(line)
+    for line in file.read().splitlines():
+        if re.match(r'(http|https)\:\/\/[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,3}(\/\S*)?',line) != None:
+            url_list.append(line)
 
+    print(url_list)
     file.close()
-    print(f"found {len(url_list)} target URLs in file")
+    print(f"found {len(url_list)} target URL(s) in file")
     return url_list
 
 
 def get_targets(input : str):
-    targets = []
-    if re.findall(r'^(https:|http:|www\.)\S*',input) != None:
-        targets.append(input)
-        return targets
+    if re.match(r'(http|https)\:\/\/[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,3}(\/\S*)?',input) != None:
+        return input
     else:
-        return targets.extend(read_targets_file(input))
+        file_links = read_targets_file(input)
+        return file_links
 
 
 # Saves image to given path 
@@ -247,9 +259,9 @@ def save_img(img,fname : str,savepath : str = None):
         return
 
     fpath = savepath+fname 
-    img.save(fname)
+    img.save(fpath)
     #print("Saving {} to: {}".format(fname,fpath))
-       
+    return
 
 # Functions to filter a list of given Image-URLs for compatible formats
 
@@ -265,7 +277,7 @@ def filter_compat_urls(url_list : list,compat_types : list):
     for url in url_list:
         if check_compat(url,compat_types):
             filtered_list.append(url)
-    print(f"Found {len(filtered_list)} compatible Image URLs")
+    print(f"found/filtered {len(filtered_list)} compatible image URL(s)")
     return filtered_list
 
 
