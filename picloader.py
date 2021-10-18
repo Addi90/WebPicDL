@@ -40,10 +40,10 @@ def main(argv):
         img_urls = []
         print(f"searching in {url}")
         if args.G:
-            gallery_url_list = get_gallery_img_urls(url)
+            gallery_url_list = get_gallery_img_urls(url,args.n)
             img_urls.extend(gallery_url_list)
         else:
-            img_urls.extend(get_img_urls(url))
+            img_urls.extend(get_img_urls(url,args.n))
 
         filtered_img_urls = filter_compat_urls(img_urls,chosen_types)
         
@@ -59,8 +59,8 @@ def main(argv):
                 i += 1
             mkdir(f"{count+i}")
             savepath = output_dir + sep.join(str(count+i)) + sep
-
-        for url in tqdm(filtered_img_urls,f"saving images from {url} to ..{sep+savepath}"):
+        print(f"saving images from {url} to ..{sep+savepath}")
+        for url in tqdm(filtered_img_urls,"saving..."):
             try:
                 img = get_img(url)
 
@@ -184,26 +184,24 @@ def get_gallery_source_urls(url : str):
     return source_links
 
 
-def get_img_urls(url : str, searchword : str = None ):
+def get_img_urls(url : str, pattern : str = None ):
     page_html = get_html(url)
     links = []
+    if(pattern == None):
+        pattern = "*"
 
-    if(searchword == None):
-        searchword = "*"
-
-    for link in re.findall(rf'(?:http:\/|https:\/)?\/[^\"\']*\/{searchword}\.(?:jpg|jpeg|gif|png)',
-        page_html.html):
-
-        link = urllib.parse.urljoin(url, link)
-        links.append(link)
+    for link in re.findall(r'(http\:\/\/|https\:\/\/)?([a-zA-Z0-9\-\.\_]+\.[a-zA-Z]{2,3})(\/\S*?)(\.jpg|\.jpeg|\.gif|\.png){1}',page_html.html):
+        link = ''.join(map(str, link))
+        if re.match(re.escape(pattern),link.rsplit('/', 1)[1]) != None:
+            link = urllib.parse.urljoin(url, link)
+            links.append(link)
 
     links = remove_dupl_urls(links)
-
     return links
 
 
 def get_img(img_url):
-    resp = requests.get(img_url)
+    resp = requests.get(img_url,stream=True)
 
     return Image.open(BytesIO(resp.content))
 
@@ -219,6 +217,7 @@ def get_html(url : str):
     resp = session.get(url)
         
     resp.html.render()
+    #print(resp.html.html)
     return resp.html
 
 
@@ -232,18 +231,19 @@ def read_targets_file(path : str):
 
     print(f"opened {path}")
     for line in file.read().splitlines():
-        if re.match(r'(http|https)\:\/\/[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,3}(\/\S*)?',line) != None:
+        if re.match(r'(http\:\/\/|https\:\/\/|www\.)?[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,3}(\/\S*)?',line) != None:
             url_list.append(line)
 
-    print(url_list)
     file.close()
     print(f"found {len(url_list)} target URL(s) in file")
     return url_list
 
 
 def get_targets(input : str):
-    if re.match(r'(http|https)\:\/\/[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,3}(\/\S*)?',input) != None:
-        return input
+    file_links = []
+    if re.match(r'(http\:\/\/|https\:\/\/|www\.)?[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,3}\/(\/\S*)?',input) != None:
+        file_links.append(input)
+        return file_links
     else:
         file_links = read_targets_file(input)
         return file_links
